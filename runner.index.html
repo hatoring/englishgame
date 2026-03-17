@@ -1,0 +1,404 @@
+import React, { useState, useEffect, useRef } from 'react';
+
+const SpellingRunner = () => {
+  // 기본 단어 목록
+  const [words, setWords] = useState([
+    { word: "APPLE", image: "🍎" },
+    { word: "BANANA", image: "🍌" },
+    { word: "BIRD", image: "🐦" },
+    { word: "COLOR", image: "🎨" },
+    { word: "DOG", image: "🐶" },
+    { word: "FISH", image: "🐟" }
+  ]);
+
+  const [gameState, setGameState] = useState('START'); 
+  const [difficulty, setDifficulty] = useState('EASY'); 
+  const [currentWordIndex, setCurrentWordIndex] = useState(0);
+  const [collectedLetters, setCollectedLetters] = useState("");
+  const [score, setScore] = useState(0);
+  const [hearts, setHearts] = useState(3);
+  const [speed, setSpeed] = useState(4); 
+  const [jump, setJump] = useState(0);
+  const [isJumping, setIsJumping] = useState(false);
+  
+  // 비밀번호 관련 상태
+  const [showPasswordInput, setShowPasswordInput] = useState(false);
+  const [password, setPassword] = useState("");
+  const [passError, setPassError] = useState(false);
+
+  const [items, setItems] = useState([]);
+  
+  // 가변 상태 관리를 위한 Ref (성능 최적화용)
+  const itemsRef = useRef([]);
+  const requestRef = useRef();
+  const playerY = useRef(0);
+  const velocityY = useRef(0);
+  const lastSpawnTime = useRef(0);
+  const containerWidth = 1000; // 게임판 가로 길이 고정
+  
+  const targetWord = words[currentWordIndex]?.word || "";
+
+  const selectDifficulty = (level) => {
+    setDifficulty(level);
+    setGameState('PLAYING');
+    resetGameStats(level);
+  };
+
+  const resetGameStats = (level) => {
+    setScore(0);
+    setHearts(3);
+    setCollectedLetters("");
+    setCurrentWordIndex(0);
+    itemsRef.current = [];
+    setItems([]);
+    const initialSpeed = level === 'EASY' ? 4 : level === 'HARD' ? 5 : 6;
+    setSpeed(initialSpeed); 
+    playerY.current = 0;
+    velocityY.current = 0;
+    lastSpawnTime.current = performance.now();
+  };
+
+  const startGame = () => {
+    if (words.length === 0) return;
+    setGameState('DIFFICULTY');
+  };
+
+  const handleAction = () => {
+    if (!isJumping && gameState === 'PLAYING') {
+      setIsJumping(true);
+      velocityY.current = 16; 
+    } else if (gameState === 'START' || gameState === 'WON' || gameState === 'OVER') {
+      startGame();
+    }
+  };
+
+  // 관리자 모드 진입 확인
+  const checkPassword = () => {
+    if (password === "2026") {
+      setGameState('ADMIN');
+      setShowPasswordInput(false);
+      setPassword("");
+      setPassError(false);
+    } else {
+      setPassError(true);
+      setPassword("");
+      setTimeout(() => setPassError(false), 2000);
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        handleAction();
+      }
+      if (e.key === 'Enter' && showPasswordInput) {
+        checkPassword();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isJumping, gameState, showPasswordInput, password]);
+
+  useEffect(() => {
+    if (gameState !== 'PLAYING') return;
+
+    const gameLoop = (time) => {
+      if (isJumping || playerY.current > 0) {
+        velocityY.current -= 0.7; 
+        playerY.current += velocityY.current;
+
+        if (playerY.current <= 0) {
+          playerY.current = 0;
+          velocityY.current = 0;
+          setIsJumping(false);
+        }
+        setJump(playerY.current);
+      }
+
+      const currentItems = itemsRef.current;
+      const movedItems = [];
+      
+      for (let i = 0; i < currentItems.length; i++) {
+        const item = currentItems[i];
+        item.x -= speed;
+        
+        const hitX = item.x > 105 && item.x < 135;
+        const hitY = Math.abs((item.y + 24) - (playerY.current + 55)) < 35;
+
+        if (hitX && hitY) {
+          handleCollision(item);
+          continue; 
+        }
+
+        if (item.x > -100) {
+          movedItems.push(item);
+        }
+      }
+
+      const spawnInterval = 1800 / (speed / 4);
+      if (time - lastSpawnTime.current > spawnInterval) {
+        const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        const nextNeededLetter = targetWord[collectedLetters.length];
+        
+        const spawnChance = difficulty === 'EASY' ? 0.5 : 0.3;
+        const letter = (Math.random() < spawnChance && nextNeededLetter) ? nextNeededLetter : alphabet[Math.floor(Math.random() * alphabet.length)];
+        
+        movedItems.push({
+          id: Math.random(),
+          x: containerWidth + 50,
+          y: Math.random() > 0.5 ? 170 : 15,
+          letter: letter
+        });
+        lastSpawnTime.current = time;
+      }
+
+      itemsRef.current = movedItems;
+      setItems(movedItems);
+
+      requestRef.current = requestAnimationFrame(gameLoop);
+    };
+
+    requestRef.current = requestAnimationFrame(gameLoop);
+    return () => cancelAnimationFrame(requestRef.current);
+  }, [gameState, speed, isJumping, targetWord, collectedLetters, difficulty]);
+
+  const handleCollision = (item) => {
+    const nextNeededLetter = targetWord[collectedLetters.length];
+    
+    if (item.letter === nextNeededLetter) {
+      setScore(s => s + 10);
+      setCollectedLetters(prev => {
+        const newStr = prev + item.letter;
+        if (newStr === targetWord) {
+          setScore(s => s + 50);
+          setTimeout(() => {
+            setCurrentWordIndex(idx => {
+              if (idx < words.length - 1) return idx + 1;
+              setGameState('WON');
+              return idx;
+            });
+            setCollectedLetters("");
+            setSpeed(s => Math.min(s + 0.4, 10));
+          }, 300);
+        }
+        return newStr;
+      });
+    } else {
+      setHearts(h => {
+        const newH = h - 1;
+        if (newH <= 0) setGameState('OVER');
+        return newH;
+      });
+    }
+  };
+
+  const [newWord, setNewWord] = useState("");
+  const [newEmoji, setNewEmoji] = useState("❓");
+
+  const addWord = () => {
+    if (newWord.trim().length > 0) {
+      setWords([...words, { word: newWord.toUpperCase().trim(), image: newEmoji }]);
+      setNewWord("");
+      setNewEmoji("❓");
+    }
+  };
+
+  const removeWord = (index) => {
+    setWords(words.filter((_, i) => i !== index));
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center w-full h-screen bg-sky-50 font-sans overflow-hidden select-none">
+      
+      {/* HUD */}
+      {gameState === 'PLAYING' && (
+        <div className="absolute top-6 w-full max-w-4xl px-10 flex justify-between items-start z-10 pointer-events-none">
+          <div className="bg-white/95 p-5 rounded-[2.5rem] shadow-xl border-4 border-sky-300 min-w-[340px]">
+            <div className="text-[12px] font-black text-sky-500 mb-1 tracking-widest uppercase text-center">
+              {difficulty === 'EXTREME' ? '철자를 유추하세요!' : '다음 글자를 찾으세요!'}
+            </div>
+            <div className="flex justify-center items-center gap-3 text-5xl font-black font-mono">
+              {targetWord.split('').map((char, i) => {
+                const isCollected = collectedLetters.length > i;
+                const displayChar = (difficulty === 'EXTREME' && !isCollected) ? '?' : char;
+                return (
+                  <span key={i} className={isCollected ? "text-orange-500" : "text-slate-200 border-b-4 border-slate-100 min-w-[40px] text-center"}>
+                    {displayChar}
+                  </span>
+                );
+              })}
+              <span className="ml-4 text-6xl animate-bounce">{words[currentWordIndex]?.image}</span>
+            </div>
+            <div className="mt-2 text-center text-[10px] font-bold text-slate-300 uppercase tracking-widest">{difficulty} MODE</div>
+          </div>
+          
+          <div className="flex flex-col items-end gap-2">
+            <div className="bg-white px-6 py-2 rounded-full font-black text-2xl shadow-lg text-orange-500 border-4 border-orange-100">
+              {score}
+            </div>
+            <div className="flex gap-1 bg-white/60 p-2 rounded-full border border-white">
+              {[...Array(3)].map((_, i) => (
+                <span key={i} className={`text-3xl transition-transform ${i < hearts ? "scale-110" : "grayscale opacity-10 scale-90"}`}>❤️</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 게임 컨테이너 */}
+      <div 
+        className="relative w-full max-w-5xl h-[420px] bg-gradient-to-b from-sky-200 via-sky-100 to-white border-b-[20px] border-emerald-400 overflow-hidden shadow-2xl rounded-[3.5rem] cursor-pointer"
+        onClick={handleAction}
+      >
+        <div className="absolute left-24 z-20" style={{ bottom: `${30 + jump}px` }}>
+          <div className="text-8xl transform -scale-x-100 drop-shadow-lg">
+            {gameState === 'WON' ? '👑' : '🏃‍♂️'}
+          </div>
+          <div className="absolute -bottom-2 left-6 bg-black/10 rounded-full blur-md"
+               style={{ width: `${60 - jump/6}px`, height: `${10 - jump/20}px`, opacity: Math.max(0, 1 - jump/150) }} />
+        </div>
+
+        {items.map(item => (
+          <div
+            key={item.id}
+            className={`absolute flex items-center justify-center w-14 h-14 bg-white rounded-2xl shadow-[0_6px_0_#cbd5e1] border-4 border-slate-50 text-slate-300 text-4xl font-black text-blue-500 will-change-transform`}
+            style={{ transform: `translate3d(${item.x}px, ${-item.y - 30}px, 0)`, bottom: 0 }}
+          >
+            {item.letter}
+          </div>
+        ))}
+      </div>
+
+      {/* 비밀번호 입력 모달 */}
+      {showPasswordInput && (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl text-center border-[10px] border-sky-100 w-full max-w-sm scale-up-animation">
+            <h2 className="text-2xl font-black mb-6 text-slate-800">비밀번호 입력 🔐</h2>
+            <input 
+              type="password" 
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="숫자 4자리"
+              className={`w-full p-4 rounded-2xl bg-slate-50 border-4 mb-4 text-center text-2xl font-black outline-none transition-all ${passError ? 'border-red-400 animate-shake' : 'border-slate-100 focus:border-sky-400'}`}
+              autoFocus
+            />
+            {passError && <p className="text-red-500 font-bold mb-4">비밀번호가 틀렸습니다!</p>}
+            <div className="flex gap-3">
+              <button 
+                onClick={() => { setShowPasswordInput(false); setPassword(""); setPassError(false); }}
+                className="flex-1 bg-slate-200 text-slate-600 font-bold py-4 rounded-2xl"
+              >
+                취소
+              </button>
+              <button 
+                onClick={checkPassword}
+                className="flex-1 bg-sky-500 text-white font-black py-4 rounded-2xl shadow-lg"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 관리자 설정 모달 */}
+      {gameState === 'ADMIN' && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-6">
+          <div className="bg-white w-full max-w-xl rounded-[3rem] shadow-2xl flex flex-col max-h-[85vh] border-[12px] border-sky-50">
+            <div className="p-8 border-b-2 border-slate-100 flex justify-between items-center bg-sky-50 rounded-t-[2.2rem]">
+              <h2 className="text-3xl font-black text-slate-800 tracking-tight">단어 관리자 ⚙️</h2>
+              <button onClick={() => setGameState('START')} className="text-4xl text-slate-300 hover:text-slate-500 transition-colors">✕</button>
+            </div>
+            <div className="p-8 overflow-y-auto flex-1 bg-slate-50/50">
+              <div className="grid gap-3 mb-6">
+                {words.map((w, i) => (
+                  <div key={i} className="flex items-center justify-between bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+                    <span className="font-black text-xl text-slate-700">{w.image} {w.word}</span>
+                    <button onClick={() => removeWord(i)} className="bg-red-50 text-red-500 font-bold px-5 py-2 rounded-xl hover:bg-red-100 transition-colors">삭제</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="p-8 bg-white border-t-2 border-slate-100 rounded-b-[3rem]">
+              <div className="flex gap-3 mb-4">
+                <input type="text" placeholder="단어 (예: APPLE)" value={newWord} onChange={(e) => setNewWord(e.target.value)}
+                  className="flex-1 p-5 rounded-2xl bg-slate-50 border-2 border-slate-100 font-black text-xl outline-none focus:border-sky-400" />
+                <input type="text" placeholder="아이콘" value={newEmoji} onChange={(e) => setNewEmoji(e.target.value)}
+                  className="w-28 p-5 rounded-2xl bg-slate-50 border-2 border-slate-100 text-center text-3xl outline-none focus:border-sky-400" />
+              </div>
+              <button onClick={addWord} className="w-full bg-sky-500 hover:bg-sky-600 text-white font-black py-5 rounded-2xl text-2xl shadow-lg transition-all active:scale-[0.98]">단어 추가하기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 난이도 선택 */}
+      {gameState === 'DIFFICULTY' && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-sky-900/40 backdrop-blur-md">
+          <div className="bg-white p-12 rounded-[4rem] shadow-2xl text-center border-[14px] border-white w-full max-w-lg scale-up-animation">
+            <h2 className="text-4xl font-black mb-8 text-slate-800 tracking-tight">난이도를 골라보세요!</h2>
+            <div className="grid gap-4">
+              <button onClick={() => selectDifficulty('EASY')} className="bg-emerald-500 hover:bg-emerald-600 text-white p-7 rounded-[2rem] shadow-xl">
+                <div className="text-3xl font-black">쉬운 버전 ✨</div>
+              </button>
+              <button onClick={() => selectDifficulty('HARD')} className="bg-orange-500 hover:bg-orange-600 text-white p-7 rounded-[2rem] shadow-xl">
+                <div className="text-3xl font-black">어려운 버전 🔥</div>
+              </button>
+              <button onClick={() => selectDifficulty('EXTREME')} className="bg-rose-600 hover:bg-rose-700 text-white p-7 rounded-[2rem] shadow-xl">
+                <div className="text-3xl font-black">완전 어려움 💀</div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 메인 메뉴 및 결과 */}
+      {(gameState === 'START' || gameState === 'WON' || gameState === 'OVER') && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-sky-900/10 backdrop-blur-sm">
+          <div className="bg-white p-14 rounded-[4rem] shadow-2xl text-center border-[14px] border-white max-w-md w-full scale-up-animation">
+            <div className="text-[10rem] mb-6 drop-shadow-xl">
+              {gameState === 'START' && "🏃‍♂️"}
+              {gameState === 'WON' && "🏆"}
+              {gameState === 'OVER' && "🩹"}
+            </div>
+            <h1 className="text-6xl font-black mb-4 tracking-tighter text-slate-800 uppercase">
+              {gameState === 'START' ? "Runner" : (gameState === 'WON' ? "Success!" : "Game Over")}
+            </h1>
+            <p className="text-slate-400 font-bold mb-10 text-xl">
+              {gameState === 'WON' ? `최종 점수: ${score}` : "영어 단어를 완성해 보세요!"}
+            </p>
+            
+            <div className="flex flex-col gap-4">
+              <button className="w-full bg-orange-400 hover:bg-orange-500 text-white py-7 rounded-[2.2rem] text-4xl font-black shadow-[0_10px_0_#c2410c] transition-all active:translate-y-2 active:shadow-none"
+                      onClick={startGame}>
+                {gameState === 'START' ? "게임 시작" : "다시 하기"}
+              </button>
+              
+              <button 
+                onClick={(e) => { e.stopPropagation(); setShowPasswordInput(true); }}
+                className="w-full bg-slate-800 hover:bg-slate-700 text-white py-4 rounded-[1.5rem] text-xl font-bold shadow-[0_6px_0_#1e293b] transition-all active:translate-y-1 active:shadow-none"
+              >
+                ⚙️ 단어 관리 (선생님용)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        .scale-up-animation { animation: scaleUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        @keyframes scaleUp { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .animate-shake { animation: shake 0.4s ease-in-out; }
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-8px); }
+          50% { transform: translateX(8px); }
+          75% { transform: translateX(-8px); }
+        }
+      `}} />
+    </div>
+  );
+};
+
+export default SpellingRunner;
