@@ -34,25 +34,27 @@
             75% { transform: translateX(-8px); }
         }
 
-        .animate-ping-custom {
-            animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
-        }
-        @keyframes ping {
-            75%, 100% { transform: scale(2); opacity: 0; }
-        }
-
         .item-transition {
             will-change: transform;
+        }
+
+        .heart-bounce {
+            animation: heartBounce 0.5s ease-out;
+        }
+        @keyframes heartBounce {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.5); }
+            100% { transform: scale(1); }
         }
     </style>
 </head>
 <body>
     <div id="game-root" class="flex flex-col items-center justify-center w-full h-screen select-none">
-        <!-- All UI will be injected here via JavaScript -->
+        <!-- JavaScript에 의해 UI가 생성됩니다. -->
     </div>
 
     <script>
-        // --- 초기 상태 및 단어 목록 ---
+        // 초기 설정
         let words = [
             { word: "APPLE", image: "🍎" },
             { word: "BANANA", image: "🍌" },
@@ -62,7 +64,7 @@
             { word: "FISH", image: "🐟" }
         ];
 
-        let gameState = 'START'; // START, DIFFICULTY, PLAYING, WON, OVER, ADMIN
+        let gameState = 'START';
         let difficulty = 'EASY';
         let currentWordIndex = 0;
         let collectedLetters = "";
@@ -72,26 +74,24 @@
         let jump = 0;
         let isJumping = false;
         let items = [];
-        
-        // 비밀번호 관련
         let showPasswordInput = false;
         let passwordInputVal = "";
         let passError = false;
+        let heartGainedAnim = false; // 하트 획득 애니메이션 상태
 
-        // 물리/타이밍 관련
+        // 캐릭터 이미지 설정
+        const CHARACTER_IMG = "https://hatoring.github.io/englishgame/cute.png";
+
         let playerY = 0;
         let velocityY = 0;
         let lastSpawnTime = 0;
         const containerWidth = 1000;
         let requestID = null;
 
-        // 관리자용 단어 추가 입력값
         let newWordInput = "";
         let newEmojiInput = "❓";
 
         const root = document.getElementById('game-root');
-
-        // --- 핵심 로직 ---
 
         function render() {
             let content = "";
@@ -116,39 +116,35 @@
                     </div>
                     <div class="flex flex-col items-end gap-2">
                         <div class="bg-white px-6 py-2 rounded-full font-black text-2xl shadow-lg text-orange-500 border-4 border-orange-100">${score}</div>
-                        <div class="flex gap-1 bg-white/60 p-2 rounded-full border border-white">
+                        <div class="flex gap-1 bg-white/60 p-2 rounded-full border border-white ${heartGainedAnim ? 'heart-bounce' : ''}">
                             ${[...Array(3)].map((_, i) => `<span class="text-3xl transition-transform ${i < hearts ? 'scale-110' : 'grayscale opacity-10 scale-90'}">❤️</span>`).join('')}
                         </div>
                     </div>
                 </div>`;
             }
 
-            // 게임 컨테이너
             content += `
             <div id="game-container" class="relative w-full max-w-5xl h-[420px] bg-gradient-to-b from-sky-200 via-sky-100 to-white border-b-[20px] border-emerald-400 overflow-hidden shadow-2xl rounded-[3.5rem] cursor-pointer">
-                <!-- 캐릭터 -->
                 <div class="absolute left-24 z-20" style="bottom: ${30 + jump}px">
-                    <div class="text-8xl transform -scale-x-100 drop-shadow-lg">
-                        ${gameState === 'WON' ? '👑' : '🏃‍♂️'}
+                    <div class="w-24 h-24 flex items-center justify-center relative">
+                        ${gameState === 'WON' ? '<span class="text-5xl absolute -top-8 z-30">👑</span>' : ''}
+                        <img src="${CHARACTER_IMG}" alt="캐릭터" class="w-full h-full object-contain drop-shadow-lg" />
                     </div>
                     <div class="absolute -bottom-2 left-6 bg-black/10 rounded-full blur-md"
                          style="width: ${60 - jump/6}px; height: ${10 - jump/20}px; opacity: ${Math.max(0, 1 - jump/150)}"></div>
                 </div>
-
-                <!-- 아이템 -->
                 ${items.map(item => `
-                    <div class="absolute flex items-center justify-center w-14 h-14 bg-white rounded-2xl shadow-[0_6px_0_#cbd5e1] border-4 border-slate-50 text-slate-300 text-4xl font-black text-blue-500 item-transition"
-                         style="transform: translate3d(${item.x}px, ${-item.y - 30}px, 0); bottom: 0;">
+                    <div class="absolute flex items-center justify-center w-14 h-14 ${item.type === 'HEART' ? 'bg-rose-50 border-rose-200' : 'bg-white border-slate-50'} rounded-2xl shadow-[0_6px_0_#cbd5e1] border-4 text-4xl font-black item-transition"
+                         style="transform: translate3d(${item.x}px, ${-item.y - 30}px, 0); bottom: 0; color: ${item.type === 'HEART' ? '#f43f5e' : '#3b82f6'}">
                         ${item.letter}
                     </div>
                 `).join('')}
             </div>`;
 
-            // 모달창들 (비밀번호, 난이도, 메인, 관리자)
             if (showPasswordInput) {
                 content += `
                 <div class="absolute inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
-                    <div class="bg-white p-8 rounded-[2.5rem] shadow-2xl text-center border-[10px] border-sky-100 w-full max-w-sm scale-up-animation">
+                    <div class="bg-white p-8 rounded-[2.5rem] shadow-2xl text-center border-[10px] border-sky-100 w-full max-sm scale-up-animation">
                         <h2 class="text-2xl font-black mb-6 text-slate-800">비밀번호 입력 🔐</h2>
                         <input type="password" id="pass-input" placeholder="숫자 4자리" class="w-full p-4 rounded-2xl bg-slate-50 border-4 mb-4 text-center text-2xl font-black outline-none transition-all ${passError ? 'border-red-400 animate-shake' : 'border-slate-100 focus:border-sky-400'}" value="${passwordInputVal}">
                         ${passError ? '<p class="text-red-500 font-bold mb-4">비밀번호가 틀렸습니다!</p>' : ''}
@@ -207,8 +203,8 @@
                 content += `
                 <div class="absolute inset-0 z-30 flex items-center justify-center bg-sky-900/10 backdrop-blur-sm">
                     <div class="bg-white p-14 rounded-[4rem] shadow-2xl text-center border-[14px] border-white max-w-md w-full scale-up-animation">
-                        <div class="text-[10rem] mb-6 drop-shadow-xl">
-                            ${gameState === 'START' ? '🏃‍♂️' : (gameState === 'WON' ? '🏆' : '🩹')}
+                        <div class="w-40 h-40 mx-auto mb-6 flex items-center justify-center">
+                            <img src="${CHARACTER_IMG}" alt="캐릭터" class="w-full h-full object-contain drop-shadow-2xl ${gameState === 'OVER' ? 'grayscale opacity-50' : ''}" />
                         </div>
                         <h1 class="text-6xl font-black mb-4 tracking-tighter text-slate-800 uppercase">
                             ${gameState === 'START' ? "Runner" : (gameState === 'WON' ? "Success!" : "Game Over")}
@@ -231,7 +227,6 @@
 
             root.innerHTML = content;
 
-            // 이벤트 바인딩 후 포커스 처리
             if (showPasswordInput) {
                 const el = document.getElementById('pass-input');
                 if (el) {
@@ -247,15 +242,8 @@
             }
         }
 
-        // --- 핸들러 함수들 ---
-
         function setS(s) { gameState = s; render(); }
-
-        function startDifficulty() {
-            if (words.length === 0) return;
-            setS('DIFFICULTY');
-        }
-
+        function startDifficulty() { if (words.length === 0) return; setS('DIFFICULTY'); }
         function setDiff(d) {
             difficulty = d;
             gameState = 'PLAYING';
@@ -265,154 +253,95 @@
         }
 
         function resetGameStats(level) {
-            score = 0;
-            hearts = 3;
-            collectedLetters = "";
-            currentWordIndex = 0;
-            items = [];
-            const initialSpeed = level === 'EASY' ? 4 : level === 'HARD' ? 5 : 6;
-            speed = initialSpeed;
-            playerY = 0;
-            velocityY = 0;
-            lastSpawnTime = performance.now();
+            score = 0; hearts = 3; collectedLetters = ""; currentWordIndex = 0; items = [];
+            speed = level === 'EASY' ? 4 : level === 'HARD' ? 5 : 6;
+            playerY = 0; velocityY = 0; lastSpawnTime = performance.now();
         }
 
-        function openPasswordModal() {
-            showPasswordInput = true;
-            passwordInputVal = "";
-            passError = false;
-            render();
-        }
-
-        function closePasswordModal() {
-            showPasswordInput = false;
-            render();
-        }
-
+        function openPasswordModal() { showPasswordInput = true; passwordInputVal = ""; passError = false; render(); }
+        function closePasswordModal() { showPasswordInput = false; render(); }
         function submitPassword() {
             if (passwordInputVal === "2026") {
-                gameState = 'ADMIN';
-                showPasswordInput = false;
-                passwordInputVal = "";
-                passError = false;
-            } else {
-                passError = true;
-                passwordInputVal = "";
-            }
+                gameState = 'ADMIN'; showPasswordInput = false; passwordInputVal = ""; passError = false;
+            } else { passError = true; passwordInputVal = ""; }
             render();
         }
 
         function addWord() {
             if (newWordInput.trim().length > 0) {
                 words.push({ word: newWordInput.toUpperCase().trim(), image: newEmojiInput || "❓" });
-                newWordInput = "";
-                newEmojiInput = "❓";
-                render();
+                newWordInput = ""; newEmojiInput = "❓"; render();
             }
         }
-
-        function removeWord(i) {
-            words.splice(i, 1);
-            render();
-        }
-
-        function handleJump() {
-            if (!isJumping && gameState === 'PLAYING') {
-                isJumping = true;
-                velocityY = 16;
-            }
-        }
+        function removeWord(i) { words.splice(i, 1); render(); }
+        function handleJump() { if (!isJumping && gameState === 'PLAYING') { isJumping = true; velocityY = 16; } }
 
         function handleCollision(item) {
+            if (item.type === 'HEART') {
+                if (hearts < 3) {
+                    hearts++;
+                    heartGainedAnim = true;
+                    setTimeout(() => { heartGainedAnim = false; render(); }, 500);
+                }
+                render();
+                return;
+            }
+
             const targetWord = words[currentWordIndex].word;
             const nextNeededLetter = targetWord[collectedLetters.length];
-
             if (item.letter === nextNeededLetter) {
-                score += 10;
-                collectedLetters += item.letter;
+                score += 10; collectedLetters += item.letter;
                 if (collectedLetters === targetWord) {
                     score += 50;
                     setTimeout(() => {
-                        if (currentWordIndex < words.length - 1) {
-                            currentWordIndex++;
-                            collectedLetters = "";
-                            speed = Math.min(speed + 0.4, 10);
-                        } else {
-                            gameState = 'WON';
-                        }
+                        if (currentWordIndex < words.length - 1) { currentWordIndex++; collectedLetters = ""; speed = Math.min(speed + 0.4, 10); } 
+                        else { gameState = 'WON'; }
                         render();
                     }, 300);
                 }
             } else {
-                hearts--;
-                if (hearts <= 0) gameState = 'OVER';
+                hearts--; if (hearts <= 0) gameState = 'OVER';
             }
             render();
         }
 
-        // --- 게임 루프 ---
-
         function gameLoop(time) {
             if (gameState !== 'PLAYING') return;
-
-            // 1. 물리 계산
             if (isJumping || playerY > 0) {
-                velocityY -= 0.7;
-                playerY += velocityY;
-
-                if (playerY <= 0) {
-                    playerY = 0;
-                    velocityY = 0;
-                    isJumping = false;
-                }
+                velocityY -= 0.7; playerY += velocityY;
+                if (playerY <= 0) { playerY = 0; velocityY = 0; isJumping = false; }
                 jump = playerY;
             }
-
-            // 2. 아이템 이동 및 충돌 판정
             const nextItems = [];
             const targetWord = words[currentWordIndex].word;
-
             for (let i = 0; i < items.length; i++) {
-                const item = items[i];
-                item.x -= speed;
-
-                // 정밀 충돌 판정 (React 버전과 동일 로직)
+                const item = items[i]; item.x -= speed;
                 const hitX = item.x > 105 && item.x < 135;
                 const hitY = Math.abs((item.y + 24) - (playerY + 55)) < 35;
-
-                if (hitX && hitY) {
-                    handleCollision(item);
-                    continue; 
-                }
-
-                if (item.x > -100) {
-                    nextItems.push(item);
-                }
+                if (hitX && hitY) { handleCollision(item); continue; }
+                if (item.x > -100) nextItems.push(item);
             }
-
-            // 3. 아이템 생성
             const spawnInterval = 1800 / (speed / 4);
             if (time - lastSpawnTime > spawnInterval) {
                 const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
                 const nextNeededLetter = targetWord[collectedLetters.length];
-                const spawnChance = difficulty === 'EASY' ? 0.5 : 0.3;
-                const letter = (Math.random() < spawnChance && nextNeededLetter) ? nextNeededLetter : alphabet[Math.floor(Math.random() * alphabet.length)];
+                
+                // 하트 아이템 생성 확률 (체력이 3 미만일 때 더 자주 나옴)
+                const heartChance = hearts < 3 ? 0.08 : 0.02;
+                const isHeart = Math.random() < heartChance;
 
-                nextItems.push({
-                    id: Math.random(),
-                    x: containerWidth + 50,
-                    y: Math.random() > 0.5 ? 170 : 15,
-                    letter: letter
-                });
+                if (isHeart) {
+                    nextItems.push({ id: Math.random(), type: 'HEART', x: containerWidth + 50, y: Math.random() > 0.5 ? 170 : 15, letter: '❤️' });
+                } else {
+                    const spawnChance = difficulty === 'EASY' ? 0.5 : 0.3;
+                    const letter = (Math.random() < spawnChance && nextNeededLetter) ? nextNeededLetter : alphabet[Math.floor(Math.random() * alphabet.length)];
+                    nextItems.push({ id: Math.random(), type: 'LETTER', x: containerWidth + 50, y: Math.random() > 0.5 ? 170 : 15, letter: letter });
+                }
                 lastSpawnTime = time;
             }
-
-            items = nextItems;
-            render();
-            requestID = requestAnimationFrame(gameLoop);
+            items = nextItems; render();
+            requestAnimationFrame(gameLoop);
         }
-
-        // --- 초기화 및 이벤트 리스너 ---
 
         window.addEventListener('keydown', (e) => {
             if (e.code === 'Space') {
@@ -420,20 +349,12 @@
                 if (gameState === 'PLAYING') handleJump();
                 else if (gameState === 'START' || gameState === 'WON' || gameState === 'OVER') startDifficulty();
             }
-            if (e.key === 'Enter') {
-                if (showPasswordInput) submitPassword();
-            }
+            if (e.key === 'Enter' && showPasswordInput) submitPassword();
         });
 
-        document.addEventListener('click', (e) => {
-            if (e.target.closest('#game-container')) {
-                handleJump();
-            }
-        });
+        document.addEventListener('click', (e) => { if (e.target.closest('#game-container')) handleJump(); });
 
-        // 시작 시 렌더링
         render();
-
     </script>
 </body>
 </html>
