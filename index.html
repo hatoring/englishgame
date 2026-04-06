@@ -3,358 +3,364 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spelling Runner Game</title>
+    <title>초등 영단어 줄다리기 - 단어 내장형</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap');
-        
-        body {
-            font-family: 'Noto Sans KR', sans-serif;
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background-color: #f0f9ff;
+        @import url('https://fonts.googleapis.com/css2?family=Jua&display=swap');
+        body { font-family: 'Jua', sans-serif; user-select: none; }
+        .rope-container {
+            position: relative; height: 60px; background: #f3f4f6;
+            border-radius: 30px; overflow: hidden; display: flex;
+            align-items: center; justify-content: center; border: 4px solid #e5e7eb;
         }
-
-        .scale-up-animation { 
-            animation: scaleUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
+        .rope {
+            position: absolute; width: 300%; height: 12px;
+            background: repeating-linear-gradient(45deg, #8b4513, #8b4513 15px, #a0522d 15px, #a0522d 30px);
+            transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        @keyframes scaleUp { 
-            from { transform: scale(0.8); opacity: 0; } 
-            to { transform: scale(1); opacity: 1; } 
+        .marker {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 10; font-size: 3.5rem; transition: left 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            text-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
-
-        .animate-shake { 
-            animation: shake 0.4s ease-in-out; 
+        .overlay-screen {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+            z-index: 100; flex-direction: column; align-items: center; justify-content: center;
+            color: white; backdrop-filter: blur(8px); display: flex;
         }
+        .active-turn { transform: scale(1.02); box-shadow: 0 0 25px rgba(0,0,0,0.15); border-width: 6px !important; }
+        .disabled-turn { opacity: 0.3; filter: grayscale(0.8); pointer-events: none; }
+        .shake { animation: shake 0.5s ease-in-out; }
         @keyframes shake {
             0%, 100% { transform: translateX(0); }
-            25% { transform: translateX(-8px); }
-            50% { transform: translateX(8px); }
-            75% { transform: translateX(-8px); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
         }
-
-        .item-transition {
-            will-change: transform;
+        .alphabet-btn { transition: all 0.1s; touch-action: manipulation; }
+        .alphabet-btn:active { transform: scale(0.9); background-color: #eab308; }
+        .letter-slot {
+            display: inline-block;
+            width: 45px;
+            border-bottom: 5px solid #4b5563;
+            margin: 0 6px;
+            font-size: 2.8rem;
+            height: 4rem;
+            line-height: 4rem;
+            vertical-align: bottom;
+            text-align: center;
+            color: #1e1b4b;
+            transition: all 0.2s;
         }
-
-        .heart-bounce {
-            animation: heartBounce 0.5s ease-out;
+        .letter-filled {
+            border-bottom-color: #6366f1;
+            color: #4338ca;
+            animation: popIn 0.2s ease-out;
         }
-        @keyframes heartBounce {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.5); }
-            100% { transform: scale(1); }
+        @keyframes popIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        #countdown-text {
+            font-size: 12rem;
+            font-weight: 900;
+            text-shadow: 0 0 30px rgba(255,255,255,0.5);
+            animation: countPulse 1s infinite;
+        }
+        @keyframes countPulse {
+            0% { transform: scale(0.8); opacity: 0; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(1); opacity: 0; }
         }
     </style>
 </head>
-<body>
-    <div id="game-root" class="flex flex-col items-center justify-center w-full h-screen select-none">
-        <!-- JavaScript에 의해 UI가 생성됩니다. -->
+<body class="bg-indigo-50 min-h-screen flex flex-col items-center p-2">
+
+    <!-- 시작 대기 화면 -->
+    <div id="start-screen" class="overlay-screen">
+        <h2 class="text-5xl font-bold mb-8 text-indigo-300">⚔️ 영단어 줄다리기 ⚔️</h2>
+        <p class="text-xl mb-12 opacity-80">그림 속 단어들이 모두 포함되었습니다!</p>
+        <button onclick="startCountdown()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-20 py-6 rounded-full text-4xl font-bold shadow-2xl transition-all transform hover:scale-110 active:scale-95">
+            게임 시작!
+        </button>
+    </div>
+
+    <!-- 카운트다운 화면 -->
+    <div id="countdown-screen" class="overlay-screen" style="display: none;">
+        <div id="countdown-text">3</div>
+    </div>
+
+    <div class="max-w-4xl w-full bg-white rounded-3xl shadow-2xl p-4 sm:p-6 mt-2">
+        <h1 class="text-2xl sm:text-3xl text-center mb-2 text-indigo-700 font-bold tracking-tight">⚔️ 영단어 줄다리기 (10칸 승리)</h1>
+        
+        <div class="rope-container mb-6">
+            <div id="rope" class="rope"></div>
+            <div id="marker" class="marker">🚩</div>
+            <div class="absolute left-4 top-1/2 -translate-y-1/2 text-5xl font-black text-red-600 opacity-10 uppercase">WIN</div>
+            <div class="absolute right-4 top-1/2 -translate-y-1/2 text-5xl font-black text-blue-600 opacity-10 uppercase">WIN</div>
+        </div>
+
+        <div class="text-center bg-gray-50 rounded-2xl p-4 mb-4 border-2 border-gray-200">
+            <div id="turn-banner" class="inline-block px-8 py-1 rounded-full text-white font-bold text-xl mb-3 bg-red-500 shadow-md">
+                A팀 차례입니다!
+            </div>
+            
+            <div id="word-slots" class="flex justify-center flex-wrap mb-2 min-h-[5.5rem] items-end"></div>
+            
+            <p id="question-mean" class="text-3xl text-gray-800 font-bold mb-1">단어를 준비 중입니다...</p>
+            <p id="feedback" class="text-lg font-bold min-h-[1.5em] text-gray-400 italic">준비되셨나요?</p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 mb-4">
+            <div id="zone-a" class="bg-red-50 p-4 rounded-2xl border-4 border-red-200 flex flex-col items-center transition-all duration-300 active-turn">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="text-2xl">🔴</span>
+                    <h3 class="text-xl font-bold text-red-600">A팀</h3>
+                    <span id="score-a" class="text-lg font-bold bg-red-600 text-white px-3 py-0.5 rounded-full">0</span>
+                </div>
+                <div id="display-a" class="w-full bg-white border-2 border-red-200 rounded-lg py-2 text-center text-2xl h-14 font-bold flex items-center justify-center text-red-600 tracking-widest"></div>
+            </div>
+
+            <div id="zone-b" class="bg-blue-50 p-4 rounded-2xl border-4 border-blue-200 flex flex-col items-center transition-all duration-300 disabled-turn">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="text-2xl">🔵</span>
+                    <h3 class="text-xl font-bold text-blue-600">B팀</h3>
+                    <span id="score-b" class="text-lg font-bold bg-blue-600 text-white px-3 py-0.5 rounded-full">0</span>
+                </div>
+                <div id="display-b" class="w-full bg-white border-2 border-blue-200 rounded-lg py-2 text-center text-2xl h-14 font-bold flex items-center justify-center text-blue-600 tracking-widest"></div>
+            </div>
+        </div>
+
+        <div class="bg-gray-100 p-3 rounded-2xl border-2 border-gray-200 shadow-inner">
+            <div id="keyboard" class="grid grid-cols-7 sm:grid-cols-9 gap-1.5 justify-center"></div>
+            <div class="flex gap-2 mt-3">
+                <button onclick="handleDelete()" class="flex-1 bg-gray-400 hover:bg-gray-500 text-white font-bold py-4 rounded-xl shadow-md active:scale-95 transition-all text-xl">지우기</button>
+                <button onclick="submitAnswer()" class="flex-[2.5] bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl shadow-xl text-3xl active:scale-95 transition-all">정답 제출!</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 최종 승리 화면 -->
+    <div id="win-screen" class="overlay-screen" style="display: none;">
+        <span id="winner-emoji" class="text-9xl mb-4 animate-bounce">🏆</span>
+        <h2 id="winner-text" class="text-7xl font-bold mb-4">A팀 승리!</h2>
+        <p class="text-2xl mb-12 opacity-80">끈질긴 승부 끝에 줄을 완전히 당겼습니다!</p>
+        <button onclick="resetGame()" class="bg-white text-gray-900 px-16 py-5 rounded-full text-3xl font-bold shadow-2xl active:scale-95 hover:bg-gray-100">다시 한 판 더!</button>
     </div>
 
     <script>
-        // 초기 설정
-        let words = [
-            { word: "APPLE", image: "🍎" },
-            { word: "BANANA", image: "🍌" },
-            { word: "BIRD", image: "🐦" },
-            { word: "COLOR", image: "🎨" },
-            { word: "DOG", image: "🐶" },
-            { word: "FISH", image: "🐟" }
+        // 이미지 표의 모든 단어 데이터 내장
+        const internalWordList = [
+            { word: "APPLE", mean: "사과" },
+            { word: "BALL", mean: "공" },
+            { word: "CAT", mean: "고양이" },
+            { word: "DOG", mean: "개" },
+            { word: "FIVE", mean: "5" },
+            { word: "GAME", mean: "게임" },
+            { word: "HAT", mean: "모자" },
+            { word: "IN", mean: "~안에" },
+            { word: "JUMP", mean: "뛰다" },
+            { word: "KING", mean: "왕" },
+            { word: "LION", mean: "사자" },
+            { word: "MONKEY", mean: "원숭이" },
+            { word: "NINE", mean: "9" },
+            { word: "ORANGE", mean: "오렌지" },
+            { word: "PIZZA", mean: "피자" },
+            { word: "QUEEN", mean: "여왕" },
+            { word: "RING", mean: "반지" },
+            { word: "SIT", mean: "앉다" },
+            { word: "TEN", mean: "10" },
+            { word: "UP", mean: "~위에" },
+            { word: "VIOLIN", mean: "바이올린" },
+            { word: "WIND", mean: "바람" },
+            { word: "SIX", mean: "6" },
+            { word: "YELLOW", mean: "노란색" },
+            { word: "ZEBRA", mean: "얼룩말" }
         ];
 
-        let gameState = 'START';
-        let difficulty = 'EASY';
-        let currentWordIndex = 0;
-        let collectedLetters = "";
-        let score = 0;
-        let hearts = 3;
-        let speed = 4;
-        let jump = 0;
-        let isJumping = false;
-        let items = [];
-        let showPasswordInput = false;
-        let passwordInputVal = "";
-        let passError = false;
-        let heartGainedAnim = false; // 하트 획득 애니메이션 상태
+        let currentPos = 0;
+        const WIN_LIMIT = 10;
+        let currentWord = {};
+        let scoreA = 0, scoreB = 0;
+        let currentTeam = 'A', currentInput = "", isProcessing = true;
 
-        // 캐릭터 이미지 설정
-        const CHARACTER_IMG = "https://hatoring.github.io/englishgame/cute.png";
-
-        let playerY = 0;
-        let velocityY = 0;
-        let lastSpawnTime = 0;
-        const containerWidth = 1000;
-        let requestID = null;
-
-        let newWordInput = "";
-        let newEmojiInput = "❓";
-
-        const root = document.getElementById('game-root');
-
-        function render() {
-            let content = "";
-
-            if (gameState === 'PLAYING') {
-                const targetWord = words[currentWordIndex].word;
-                content += `
-                <div class="absolute top-6 w-full max-w-4xl px-10 flex justify-between items-start z-10 pointer-events-none">
-                    <div class="bg-white/95 p-5 rounded-[2.5rem] shadow-xl border-4 border-sky-300 min-w-[340px]">
-                        <div class="text-[12px] font-black text-sky-500 mb-1 tracking-widest uppercase text-center">
-                            ${difficulty === 'EXTREME' ? '철자를 유추하세요!' : '다음 글자를 찾으세요!'}
-                        </div>
-                        <div class="flex justify-center items-center gap-3 text-5xl font-black font-mono">
-                            ${targetWord.split('').map((char, i) => {
-                                const isCollected = collectedLetters.length > i;
-                                const displayChar = (difficulty === 'EXTREME' && !isCollected) ? '?' : char;
-                                return `<span class="${isCollected ? 'text-orange-500' : 'text-slate-200 border-b-4 border-slate-100 min-w-[40px] text-center'}">${displayChar}</span>`;
-                            }).join('')}
-                            <span class="ml-4 text-6xl animate-bounce">${words[currentWordIndex].image}</span>
-                        </div>
-                        <div class="mt-2 text-center text-[10px] font-bold text-slate-300 uppercase tracking-widest">${difficulty} MODE</div>
-                    </div>
-                    <div class="flex flex-col items-end gap-2">
-                        <div class="bg-white px-6 py-2 rounded-full font-black text-2xl shadow-lg text-orange-500 border-4 border-orange-100">${score}</div>
-                        <div class="flex gap-1 bg-white/60 p-2 rounded-full border border-white ${heartGainedAnim ? 'heart-bounce' : ''}">
-                            ${[...Array(3)].map((_, i) => `<span class="text-3xl transition-transform ${i < hearts ? 'scale-110' : 'grayscale opacity-10 scale-90'}">❤️</span>`).join('')}
-                        </div>
-                    </div>
-                </div>`;
-            }
-
-            content += `
-            <div id="game-container" class="relative w-full max-w-5xl h-[420px] bg-gradient-to-b from-sky-200 via-sky-100 to-white border-b-[20px] border-emerald-400 overflow-hidden shadow-2xl rounded-[3.5rem] cursor-pointer">
-                <div class="absolute left-24 z-20" style="bottom: ${30 + jump}px">
-                    <div class="w-24 h-24 flex items-center justify-center relative">
-                        ${gameState === 'WON' ? '<span class="text-5xl absolute -top-8 z-30">👑</span>' : ''}
-                        <img src="${CHARACTER_IMG}" alt="캐릭터" class="w-full h-full object-contain drop-shadow-lg" />
-                    </div>
-                    <div class="absolute -bottom-2 left-6 bg-black/10 rounded-full blur-md"
-                         style="width: ${60 - jump/6}px; height: ${10 - jump/20}px; opacity: ${Math.max(0, 1 - jump/150)}"></div>
-                </div>
-                ${items.map(item => `
-                    <div class="absolute flex items-center justify-center w-14 h-14 ${item.type === 'HEART' ? 'bg-rose-50 border-rose-200' : 'bg-white border-slate-50'} rounded-2xl shadow-[0_6px_0_#cbd5e1] border-4 text-4xl font-black item-transition"
-                         style="transform: translate3d(${item.x}px, ${-item.y - 30}px, 0); bottom: 0; color: ${item.type === 'HEART' ? '#f43f5e' : '#3b82f6'}">
-                        ${item.letter}
-                    </div>
-                `).join('')}
-            </div>`;
-
-            if (showPasswordInput) {
-                content += `
-                <div class="absolute inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
-                    <div class="bg-white p-8 rounded-[2.5rem] shadow-2xl text-center border-[10px] border-sky-100 w-full max-sm scale-up-animation">
-                        <h2 class="text-2xl font-black mb-6 text-slate-800">비밀번호 입력 🔐</h2>
-                        <input type="password" id="pass-input" placeholder="숫자 4자리" class="w-full p-4 rounded-2xl bg-slate-50 border-4 mb-4 text-center text-2xl font-black outline-none transition-all ${passError ? 'border-red-400 animate-shake' : 'border-slate-100 focus:border-sky-400'}" value="${passwordInputVal}">
-                        ${passError ? '<p class="text-red-500 font-bold mb-4">비밀번호가 틀렸습니다!</p>' : ''}
-                        <div class="flex gap-3">
-                            <button onclick="closePasswordModal()" class="flex-1 bg-slate-200 text-slate-600 font-bold py-4 rounded-2xl">취소</button>
-                            <button onclick="submitPassword()" class="flex-1 bg-sky-500 text-white font-black py-4 rounded-2xl shadow-lg">확인</button>
-                        </div>
-                    </div>
-                </div>`;
-            }
-
-            if (gameState === 'DIFFICULTY') {
-                content += `
-                <div class="absolute inset-0 z-50 flex items-center justify-center bg-sky-900/40 backdrop-blur-md">
-                    <div class="bg-white p-12 rounded-[4rem] shadow-2xl text-center border-[14px] border-white w-full max-w-lg scale-up-animation">
-                        <h2 class="text-4xl font-black mb-8 text-slate-800 tracking-tight">난이도를 골라보세요!</h2>
-                        <div class="grid gap-4">
-                            <button onclick="setDiff('EASY')" class="bg-emerald-500 hover:bg-emerald-600 text-white p-7 rounded-[2rem] shadow-xl text-3xl font-black">쉬운 버전 ✨</button>
-                            <button onclick="setDiff('HARD')" class="bg-orange-500 hover:bg-orange-600 text-white p-7 rounded-[2rem] shadow-xl text-3xl font-black">어려운 버전 🔥</button>
-                            <button onclick="setDiff('EXTREME')" class="bg-rose-600 hover:bg-rose-700 text-white p-7 rounded-[2rem] shadow-xl text-3xl font-black">완전 어려움 💀</button>
-                        </div>
-                    </div>
-                </div>`;
-            }
-
-            if (gameState === 'ADMIN') {
-                content += `
-                <div class="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-6">
-                    <div class="bg-white w-full max-w-xl rounded-[3rem] shadow-2xl flex flex-col max-h-[85vh] border-[12px] border-sky-50">
-                        <div class="p-8 border-b-2 border-slate-100 flex justify-between items-center bg-sky-50 rounded-t-[2.2rem]">
-                            <h2 class="text-3xl font-black text-slate-800 tracking-tight">단어 관리자 ⚙️</h2>
-                            <button onclick="setS('START')" class="text-4xl text-slate-300 hover:text-slate-500 transition-colors">✕</button>
-                        </div>
-                        <div class="p-8 overflow-y-auto flex-1 bg-slate-50/50">
-                            <div class="grid gap-3 mb-6">
-                                ${words.map((w, i) => `
-                                    <div class="flex items-center justify-between bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-                                        <span class="font-black text-xl text-slate-700">${w.image} ${w.word}</span>
-                                        <button onclick="removeWord(${i})" class="bg-red-50 text-red-500 font-bold px-5 py-2 rounded-xl hover:bg-red-100 transition-colors">삭제</button>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-                        <div class="p-8 bg-white border-t-2 border-slate-100 rounded-b-[3rem]">
-                            <div class="flex gap-3 mb-4">
-                                <input type="text" id="new-word" placeholder="단어 (예: APPLE)" class="flex-1 p-5 rounded-2xl bg-slate-50 border-2 border-slate-100 font-black text-xl outline-none focus:border-sky-400" value="${newWordInput}">
-                                <input type="text" id="new-emoji" placeholder="아이콘" class="w-28 p-5 rounded-2xl bg-slate-50 border-2 border-slate-100 text-center text-3xl outline-none focus:border-sky-400" value="${newEmojiInput}">
-                            </div>
-                            <button onclick="addWord()" class="w-full bg-sky-500 hover:bg-sky-600 text-white font-black py-5 rounded-2xl text-2xl shadow-lg transition-all active:scale-[0.98]">단어 추가하기</button>
-                        </div>
-                    </div>
-                </div>`;
-            }
-
-            if (gameState === 'START' || gameState === 'WON' || gameState === 'OVER') {
-                content += `
-                <div class="absolute inset-0 z-30 flex items-center justify-center bg-sky-900/10 backdrop-blur-sm">
-                    <div class="bg-white p-14 rounded-[4rem] shadow-2xl text-center border-[14px] border-white max-w-md w-full scale-up-animation">
-                        <div class="w-40 h-40 mx-auto mb-6 flex items-center justify-center">
-                            <img src="${CHARACTER_IMG}" alt="캐릭터" class="w-full h-full object-contain drop-shadow-2xl ${gameState === 'OVER' ? 'grayscale opacity-50' : ''}" />
-                        </div>
-                        <h1 class="text-6xl font-black mb-4 tracking-tighter text-slate-800 uppercase">
-                            ${gameState === 'START' ? "Runner" : (gameState === 'WON' ? "Success!" : "Game Over")}
-                        </h1>
-                        <p class="text-slate-400 font-bold mb-10 text-xl">
-                            ${gameState === 'WON' ? `최종 점수: ${score}` : "영어 단어를 완성해 보세요!"}
-                        </p>
-                        <div class="flex flex-col gap-4">
-                            <button class="w-full bg-orange-400 hover:bg-orange-500 text-white py-7 rounded-[2.2rem] text-4xl font-black shadow-[0_10px_0_#c2410c] transition-all active:translate-y-2 active:shadow-none"
-                                    onclick="startDifficulty()">
-                                ${gameState === 'START' ? "게임 시작" : "다시 하기"}
-                            </button>
-                            <button onclick="openPasswordModal()" class="w-full bg-slate-800 hover:bg-slate-700 text-white py-4 rounded-[1.5rem] text-xl font-bold shadow-[0_6px_0_#1e293b] transition-all active:translate-y-1 active:shadow-none">
-                                ⚙️ 단어 관리 (선생님용)
-                            </button>
-                        </div>
-                    </div>
-                </div>`;
-            }
-
-            root.innerHTML = content;
-
-            if (showPasswordInput) {
-                const el = document.getElementById('pass-input');
-                if (el) {
-                    el.focus();
-                    el.oninput = (e) => passwordInputVal = e.target.value;
-                }
-            }
-            if (gameState === 'ADMIN') {
-                const w = document.getElementById('new-word');
-                const e = document.getElementById('new-emoji');
-                if (w) w.oninput = (ev) => newWordInput = ev.target.value;
-                if (e) e.oninput = (ev) => newEmojiInput = ev.target.value;
-            }
-        }
-
-        function setS(s) { gameState = s; render(); }
-        function startDifficulty() { if (words.length === 0) return; setS('DIFFICULTY'); }
-        function setDiff(d) {
-            difficulty = d;
-            gameState = 'PLAYING';
-            resetGameStats(d);
-            render();
-            requestAnimationFrame(gameLoop);
-        }
-
-        function resetGameStats(level) {
-            score = 0; hearts = 3; collectedLetters = ""; currentWordIndex = 0; items = [];
-            speed = level === 'EASY' ? 4 : level === 'HARD' ? 5 : 6;
-            playerY = 0; velocityY = 0; lastSpawnTime = performance.now();
-        }
-
-        function openPasswordModal() { showPasswordInput = true; passwordInputVal = ""; passError = false; render(); }
-        function closePasswordModal() { showPasswordInput = false; render(); }
-        function submitPassword() {
-            if (passwordInputVal === "2026") {
-                gameState = 'ADMIN'; showPasswordInput = false; passwordInputVal = ""; passError = false;
-            } else { passError = true; passwordInputVal = ""; }
-            render();
-        }
-
-        function addWord() {
-            if (newWordInput.trim().length > 0) {
-                words.push({ word: newWordInput.toUpperCase().trim(), image: newEmojiInput || "❓" });
-                newWordInput = ""; newEmojiInput = "❓"; render();
-            }
-        }
-        function removeWord(i) { words.splice(i, 1); render(); }
-        function handleJump() { if (!isJumping && gameState === 'PLAYING') { isJumping = true; velocityY = 16; } }
-
-        function handleCollision(item) {
-            if (item.type === 'HEART') {
-                if (hearts < 3) {
-                    hearts++;
-                    heartGainedAnim = true;
-                    setTimeout(() => { heartGainedAnim = false; render(); }, 500);
-                }
-                render();
-                return;
-            }
-
-            const targetWord = words[currentWordIndex].word;
-            const nextNeededLetter = targetWord[collectedLetters.length];
-            if (item.letter === nextNeededLetter) {
-                score += 10; collectedLetters += item.letter;
-                if (collectedLetters === targetWord) {
-                    score += 50;
-                    setTimeout(() => {
-                        if (currentWordIndex < words.length - 1) { currentWordIndex++; collectedLetters = ""; speed = Math.min(speed + 0.4, 10); } 
-                        else { gameState = 'WON'; }
-                        render();
-                    }, 300);
-                }
-            } else {
-                hearts--; if (hearts <= 0) gameState = 'OVER';
-            }
-            render();
-        }
-
-        function gameLoop(time) {
-            if (gameState !== 'PLAYING') return;
-            if (isJumping || playerY > 0) {
-                velocityY -= 0.7; playerY += velocityY;
-                if (playerY <= 0) { playerY = 0; velocityY = 0; isJumping = false; }
-                jump = playerY;
-            }
-            const nextItems = [];
-            const targetWord = words[currentWordIndex].word;
-            for (let i = 0; i < items.length; i++) {
-                const item = items[i]; item.x -= speed;
-                const hitX = item.x > 105 && item.x < 135;
-                const hitY = Math.abs((item.y + 24) - (playerY + 55)) < 35;
-                if (hitX && hitY) { handleCollision(item); continue; }
-                if (item.x > -100) nextItems.push(item);
-            }
-            const spawnInterval = 1800 / (speed / 4);
-            if (time - lastSpawnTime > spawnInterval) {
-                const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-                const nextNeededLetter = targetWord[collectedLetters.length];
-                
-                // 하트 아이템 생성 확률 (체력이 3 미만일 때 더 자주 나옴)
-                const heartChance = hearts < 3 ? 0.08 : 0.02;
-                const isHeart = Math.random() < heartChance;
-
-                if (isHeart) {
-                    nextItems.push({ id: Math.random(), type: 'HEART', x: containerWidth + 50, y: Math.random() > 0.5 ? 170 : 15, letter: '❤️' });
-                } else {
-                    const spawnChance = difficulty === 'EASY' ? 0.5 : 0.3;
-                    const letter = (Math.random() < spawnChance && nextNeededLetter) ? nextNeededLetter : alphabet[Math.floor(Math.random() * alphabet.length)];
-                    nextItems.push({ id: Math.random(), type: 'LETTER', x: containerWidth + 50, y: Math.random() > 0.5 ? 170 : 15, letter: letter });
-                }
-                lastSpawnTime = time;
-            }
-            items = nextItems; render();
-            requestAnimationFrame(gameLoop);
-        }
-
-        window.addEventListener('keydown', (e) => {
-            if (e.code === 'Space') {
-                e.preventDefault();
-                if (gameState === 'PLAYING') handleJump();
-                else if (gameState === 'START' || gameState === 'WON' || gameState === 'OVER') startDifficulty();
-            }
-            if (e.key === 'Enter' && showPasswordInput) submitPassword();
+        // 키보드 생성
+        const keyboard = document.getElementById('keyboard');
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").forEach(char => {
+            const btn = document.createElement('button');
+            btn.innerText = char;
+            btn.className = "alphabet-btn bg-white border-2 border-gray-300 rounded-lg py-3 sm:py-5 text-2xl font-bold shadow-sm hover:border-indigo-400 active:bg-indigo-100";
+            btn.onclick = () => { if(!isProcessing) handleInput(char); };
+            keyboard.appendChild(btn);
         });
 
-        document.addEventListener('click', (e) => { if (e.target.closest('#game-container')) handleJump(); });
+        function startCountdown() {
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('countdown-screen').style.display = 'flex';
+            let count = 3;
+            const countText = document.getElementById('countdown-text');
+            countText.innerText = count;
+            
+            const timer = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    countText.innerText = count;
+                } else if (count === 0) {
+                    countText.innerText = "GO!";
+                } else {
+                    clearInterval(timer);
+                    document.getElementById('countdown-screen').style.display = 'none';
+                    initQuestion();
+                }
+            }, 1000);
+        }
 
-        render();
+        function handleInput(char) {
+            if (currentInput.length < currentWord.word.length) {
+                currentInput += char;
+                updateView();
+            }
+        }
+
+        function handleDelete() {
+            if (!isProcessing && currentInput.length > 0) {
+                currentInput = currentInput.slice(0, -1);
+                updateView();
+            }
+        }
+
+        function updateView() {
+            document.getElementById(`display-${currentTeam.toLowerCase()}`).innerText = currentInput;
+            const slots = document.querySelectorAll('.letter-slot');
+            slots.forEach((slot, index) => {
+                if (currentInput[index]) {
+                    slot.innerText = currentInput[index];
+                    slot.classList.add('letter-filled');
+                } else {
+                    slot.innerText = "";
+                    slot.classList.remove('letter-filled');
+                }
+            });
+        }
+
+        function initQuestion() {
+            isProcessing = false;
+            currentInput = "";
+            // 랜덤 단어 선택
+            currentWord = internalWordList[Math.floor(Math.random() * internalWordList.length)];
+            
+            const slotsContainer = document.getElementById('word-slots');
+            slotsContainer.innerHTML = "";
+            for (let i = 0; i < currentWord.word.length; i++) {
+                const slot = document.createElement('div');
+                slot.className = "letter-slot";
+                slotsContainer.appendChild(slot);
+            }
+
+            document.getElementById('question-mean').innerText = currentWord.mean;
+            document.getElementById('display-a').innerText = "";
+            document.getElementById('display-b').innerText = "";
+            
+            updateTurnUI();
+            
+            const feedback = document.getElementById('feedback');
+            feedback.innerText = `${currentWord.word.length}글자 단어입니다. 맞춰보세요!`;
+            feedback.className = "text-lg font-bold text-gray-400 italic";
+        }
+
+        function updateTurnUI() {
+            const isA = currentTeam === 'A';
+            const zoneA = document.getElementById('zone-a');
+            const zoneB = document.getElementById('zone-b');
+            const banner = document.getElementById('turn-banner');
+
+            if (isA) {
+                zoneA.className = "bg-red-50 p-4 rounded-2xl border-4 border-red-400 flex flex-col items-center transition-all duration-300 active-turn";
+                zoneB.className = "bg-gray-50 p-4 rounded-2xl border-4 border-transparent flex flex-col items-center transition-all duration-300 disabled-turn";
+                banner.innerText = "A팀 차례입니다!";
+                banner.className = "inline-block px-8 py-1 rounded-full text-white font-bold text-xl mb-3 bg-red-500 shadow-md";
+            } else {
+                zoneB.className = "bg-blue-50 p-4 rounded-2xl border-4 border-blue-400 flex flex-col items-center transition-all duration-300 active-turn";
+                zoneA.className = "bg-gray-50 p-4 rounded-2xl border-4 border-transparent flex flex-col items-center transition-all duration-300 disabled-turn";
+                banner.innerText = "B팀 차례입니다!";
+                banner.className = "inline-block px-8 py-1 rounded-full text-white font-bold text-xl mb-3 bg-blue-500 shadow-md";
+            }
+        }
+
+        function submitAnswer() {
+            if (isProcessing || currentInput.length === 0) return;
+            isProcessing = true;
+
+            const cleanInput = currentInput.trim().toUpperCase();
+            const cleanTarget = currentWord.word.trim().toUpperCase();
+            
+            const isCorrect = cleanInput === cleanTarget;
+            const feedback = document.getElementById('feedback');
+
+            if (isCorrect) {
+                feedback.innerText = `⭕ 정답! [${cleanTarget}]! 1칸 당깁니다!`;
+                feedback.className = "text-xl font-bold text-green-600 animate-pulse";
+                
+                if (currentTeam === 'A') { currentPos--; scoreA++; }
+                else { currentPos++; scoreB++; }
+                
+                updateVisuals();
+                currentTeam = (currentTeam === 'A') ? 'B' : 'A';
+                
+                setTimeout(() => {
+                    if (Math.abs(currentPos) < WIN_LIMIT) initQuestion();
+                }, 1500);
+            } else {
+                document.getElementById(`zone-${currentTeam.toLowerCase()}`).classList.add('shake');
+                setTimeout(() => document.getElementById(`zone-${currentTeam.toLowerCase()}`).classList.remove('shake'), 500);
+                
+                feedback.innerText = `❌ 아까워요! 틀렸습니다! (상대에게 기회가 넘어갑니다)`;
+                feedback.className = "text-xl font-bold text-red-500";
+                
+                // 틀리면 반대 방향으로 조금 끌려감
+                currentTeam === 'A' ? currentPos += 0.5 : currentPos -= 0.5;
+                updateVisuals();
+
+                setTimeout(() => {
+                    currentTeam = (currentTeam === 'A') ? 'B' : 'A';
+                    currentInput = "";
+                    isProcessing = false;
+                    updateTurnUI();
+                    updateView();
+                    feedback.innerText = "상대 팀의 차례입니다! 집중하세요!";
+                    feedback.className = "text-lg font-bold text-indigo-500 italic";
+                }, 2000);
+            }
+        }
+
+        function updateVisuals() {
+            const movePercent = currentPos * (50 / WIN_LIMIT); 
+            document.getElementById('marker').style.left = `calc(50% + ${movePercent}%)`;
+            document.getElementById('rope').style.transform = `translateX(${-movePercent}%)`;
+            
+            document.getElementById('score-a').innerText = scoreA;
+            document.getElementById('score-b').innerText = scoreB;
+            
+            if (currentPos <= -WIN_LIMIT) endGame('A');
+            else if (currentPos >= WIN_LIMIT) endGame('B');
+        }
+
+        function endGame(winner) {
+            document.getElementById('win-screen').style.display = 'flex';
+            document.getElementById('winner-text').innerText = `${winner}팀 승리!`;
+            document.getElementById('winner-text').style.color = (winner === 'A') ? '#ef4444' : '#3b82f6';
+        }
+
+        function resetGame() {
+            currentPos = 0; scoreA = 0; scoreB = 0; currentTeam = 'A';
+            document.getElementById('win-screen').style.display = 'none';
+            updateVisuals();
+            startCountdown();
+        }
+
+        // 페이지 로드 시 즉시 실행
+        window.onload = () => {
+            // 로딩 화면이 필요 없으므로 바로 시작 화면 노출
+        };
     </script>
 </body>
 </html>
